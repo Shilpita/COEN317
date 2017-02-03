@@ -1,4 +1,8 @@
-
+/******************************************************************************
+ * COEN 317 - Distributed Systems Project -Winter2016
+ * author: Shilpita Roy (sroy) , Sruthi
+ * Project: Raft algorithm
+ ***************************************************************************/
 
 import java.rmi.*;
 import java.util.Iterator;
@@ -219,10 +223,11 @@ public class Node  implements RaftRequestInterface {
 									    timer_.electionTask_.cancel(); // election over
 									    
 										for (String nodeName : reg.list()) {
-											   if (0 == nodeName.compareTo(name))
-				                                	continue;
+											  // if (0 == nodeName.compareTo(name))
+				                              //  	continue;
+											 if(!(nodeName.equals(leaderId))){
 											    RaftRequestInterface otherNodeStub = (RaftRequestInterface) reg.lookup(nodeName);
-											    appendEntryCount+= otherNodeStub.appendEntryRequest(null, leaderTerm, leaderId, repl_.last_entry_, repl_.local_last_index_);
+											    appendEntryCount+= otherNodeStub.appendEntryRequest(null, leaderTerm, leaderId, repl_.last_entry_, repl_.local_last_index_);}
 										}
 
 										if (appendEntryCount < ((MaxNodes/2) + 1)) 
@@ -317,7 +322,7 @@ public class Node  implements RaftRequestInterface {
 							heardFromLeader = false;
 						} else {
 							state_ = State.CANDIDATE;
-							StateTrace(state_, name + " No Hearbeat from leader " + currentTerm);
+							StateTrace(state_, name + " No Hearbeat from leader of term " + currentTerm);
 							timer_.electionTask_    = new RaftElectionTask();
 							timer_.schedule(timer_.electionTask_, 0, silencePeriod);
 						}
@@ -346,7 +351,8 @@ public class Node  implements RaftRequestInterface {
 		
 		if (state_ == State.LEADER) {	
 		    StateTrace(state_, " " + leaderName);
-			throw new RemoteException();
+			//throw new RemoteException();
+		    return 0;
 		}	
 		
 		StateTrace(state_, "Append Entry Argument Index " + lastCommitedLogIndex);
@@ -380,7 +386,19 @@ public class Node  implements RaftRequestInterface {
 					    ReplTrace(state_, "Entry Committed : Term " + repl_.last_entry_.term + " index " + repl_.local_last_index_);
 						return 1;
 						
-					} else  {
+					} else if (newLogEntry == null && lastCommitedLogIndex == repl_.local_last_index_ ){
+						repl_.flush_entry_ = null;
+						ReplTrace(state_, "New Leader heartbeat: "+leaderName +"discard last flush entry" );
+						return 0;
+					}else if (newLogEntry == null && lastCommitedLogIndex > repl_.local_last_index_ ){	
+						localLog.addElement(repl_.flush_entry_);
+						repl_.last_entry_ =  repl_.flush_entry_;
+						repl_.local_last_index_ = lastCommitedLogIndex; //Note
+						repl_.flush_entry_ = newLogEntry;
+					    ReplTrace(state_, "Entry Committed : Term " + repl_.last_entry_.term + " index " + repl_.local_last_index_);
+					    return 1;
+						
+				     }else  {
 								
 						ReplTrace(state_, "TBD Case");
 						return 0;
@@ -452,6 +470,14 @@ public class Node  implements RaftRequestInterface {
 					} else if (repl_.flush_entry_.term > lastCommitLogEntry.term) {
 						ReplTrace(state_, "ignore app entry request 003 ");
 						return 0;
+					/*	localLog.addElement(repl_.flush_entry_);
+						repl_.last_entry_ =  repl_.flush_entry_;
+						repl_.local_last_index_++;
+						assert (repl_.local_last_index_ == lastCommitedLogIndex);
+						repl_.flush_entry_ = newLogEntry;
+						ReplTrace(state_, "Entry Committed " + repl_.last_entry_.term + "index " + repl_.local_last_index_);
+			            return 1;  */
+						
 					} 
 				}
 		    }
@@ -472,7 +498,14 @@ public class Node  implements RaftRequestInterface {
         if (newTerm < currentTerm || (newTerm == currentTerm && repl_.local_last_index_ > lastCandidateCommitedIndex) || votedCurrTerm != 0) {
 					StateTrace(state_, "\n Vote denied by " + name + "\t to Candidate "+ candidateName +"\t for term "+ newTerm);
 			        return 0;
-		} else{  
+		} else if(newTerm > leaderTerm && (repl_.local_last_index_ == lastCandidateCommitedIndex) && (name.equals(leaderId))){
+			StateTrace(state_," stepped down.");
+			state_ = State.FOLLOWER;
+			currentTerm  = newTerm;
+		    votedCurrTerm ++;
+		    StateTrace(state_, "\n Vote given by " + name + "\t to Candidate "+ candidateName +"\t for term "+ newTerm);
+	        return 1;
+	    }else{  
 			      currentTerm  = newTerm;
 			      votedCurrTerm ++;
 			      StateTrace(state_, "\n Vote given by " + name + "\t to Candidate "+ candidateName +"\t for term "+ newTerm);

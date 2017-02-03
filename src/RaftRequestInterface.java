@@ -1,4 +1,8 @@
-
+/******************************************************************************
+ * COEN 317 - Distributed Systems Project -Winter2016
+ * author: Shilpita Roy (sroy) , Sruthi
+ * Project: Raft algorithm
+ ***************************************************************************/
 
 import java.rmi.Remote;
 import java.rmi.RemoteException;
